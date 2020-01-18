@@ -1,4 +1,5 @@
 import pygame
+from itertools import product
 
 class Node():
     def __init__(self, map=None, nodeSize=15,pos=None):
@@ -7,14 +8,21 @@ class Node():
         self.nodeSize = nodeSize
         self.pos = pos
         self.blit_pos = [i*nodeSize for i in self.pos]
-        self.color = (0,0,0)
+        self.color = self.colors('WHITE')
 
         self.image = pygame.Surface((self.nodeSize, self.nodeSize))
         self.rect = self.image.get_rect(topleft=self.blit_pos)
 
-        self.obstacle = False
-        self.visited = False
-        self.goal = False
+        self.nodeState = 0
+        self.nodeStates = {
+            0:self.colors('WHITE'),     # Free space
+            1:self.colors('RED'),       # Obstacle
+            2:self.colors('PURPLE'),    # Start
+            3:self.colors('YELLOW'),    # Goal
+            4:self.colors('BLUE'),      # Visited
+        }
+
+        self.draw(self.game.screen)
 
     def colors(self, colorType):
         color = {
@@ -30,28 +38,18 @@ class Node():
         return color[colorType]
 
     def update(self):
-        if self.visited:
-            self.color = self.colors('BLUE')
-        else: 
-            self.color = self.colors('WHITE')
-
-        if self.obstacle:
-            self.color = self.colors('RED')
-            
-        if self.goal:
-            self.color = self.colors('YELLOW')
-        
-        if pygame.mouse.get_pressed()[0] and self.rect.collidepoint(self.game.mpos):
-                self.obstacle = True
-                self.color = self.colors('BLACK')
-
-        elif pygame.mouse.get_pressed()[2] and self.rect.collidepoint(self.game.mpos):   
-            self.obstacle = False
-            self.color = self.colors('WHITE')
+        self.color = self.nodeStates[self.nodeState]
+        self.draw(self.game.screen)
 
     def draw(self, screen):
         self.image.fill(self.color)
+
+        coords = [*product((0, self.nodeSize),(0, self.nodeSize))]
+        coord_index = [(0,1),(1,3),(3,2),(2,0)]
+        [pygame.draw.line(self.image, [100]*3, coords[start], coords[end]) for start, end in coord_index] 
+
         screen.blit(self.image, self.rect)
+
         
 
 class Map:
@@ -64,20 +62,20 @@ class Map:
 
         self.width = int((self.game.screen_res[1]/self.nodeSize))
         self.height = int(self.game.screen_res[0]/self.nodeSize) 
-        self.nodes = [[Node(map=self, nodeSize=self.nodeSize,pos=[row, col]) for row in list(range(0,self.height))] for col in list(range(0,self.width))] 
+        self.nodes = [[Node(map=self, nodeSize=self.nodeSize,pos=[row,col]) for row in list(range(self.height))] for col in list(range(self.width))] 
+
+        self.genererateGrid()
+        self.start_goal = False
+        self.statePositions = [(),()] # Remember nodes that contain start/goal position
 
     def update(self):
-        # Update the nodes
-        for col in self.nodes:
-            for node in col:    
-                node.update()
-                node.draw(self.game.screen)
+        pass
         
-        # Update the grid
-        [pygame.draw.line(self.game.screen, [100]*3, (0, (self.nodeSize*i)), (750, (self.nodeSize*i))) for i in range(0,self.width)]
-        [pygame.draw.line(self.game.screen, [100]*3, (self.nodeSize*i, 0), (self.nodeSize*i, 500)) for i in range(0,self.height)]
+    def genererateGrid(self):
+         # Update the grid (Surface, color, start, end)
+        [pygame.draw.line(self.game.screen, [100]*3, (0, (self.nodeSize*i)), (self.width*self.nodeSize, (self.nodeSize*i))) for i in range(0,self.width)]
+        [pygame.draw.line(self.game.screen, [100]*3, (self.nodeSize*i, 0), (self.nodeSize*i, self.height*self.nodeSize)) for i in range(0,self.height)]
 
-        
     def generateMap(self):
         '''Generates a map of given size with obstacles'''
         
@@ -94,17 +92,47 @@ class Map:
         
         for col,_ in enumerate(maze[0]):
             for row,_ in enumerate(maze): 
-                if maze[row][col] == 1: # Obstacle
-                    self.nodes[row][col].obstacle = True
-                else:
-                    self.nodes[row][col].obstacle = False
+                node = self.nodes[row][col]
+                node.nodeState = maze[row][col] # If 1: Obstacle, 0: Free -> Check nodeState
+                node.update()
         
-    def moveStart(self):
-        '''Move start position'''
-        pass
-    def moveGoal(self):
-        '''Move goal position'''
-        pass
+    def start_goal_handler(self,position:tuple, button:int,inputType:int):
+        '''
+        Define start & goal position
+        Start: Left button -> 1
+        Goal: Right button -> 3
+        '''
+        state2index = {
+            1:0, # Start
+            3:1  # Goal
+        }
+        
+        # Remove old start/goal
+        if len(self.statePositions[state2index[button]]):
+            ypos, xpos = self.statePositions[state2index[button]]
+            node_0 = self.nodes[xpos//self.nodeSize][ypos//self.nodeSize]
+
+            node_0.nodeState = 0 # Mark node as free
+            node_0.update()
+
+        # Change to new position
+        state2int = {
+            1:2, # Start
+            3:3  # Goal
+        }
+        ypos, xpos = position
+        node_1 = self.nodes[xpos//self.nodeSize][ypos//self.nodeSize]
+        
+        node_1.color = node_1.nodeStates[state2int[button]]
+        if inputType == 6:
+            node_1.nodeState = state2int[button]
+            # TODO: Only update when dropping mouse
+        
+        node_1.draw(self.game.screen)
+
+        self.statePositions[state2index[button]] = (ypos,xpos)
+        
+ 
 
     def search(self):
         '''Implement algorithm for search A* etc...'''

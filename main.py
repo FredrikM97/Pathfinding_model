@@ -120,7 +120,6 @@ class Simulation():
 
     def draw(self):
         '''Updates the screen'''
-        #self.map.update()
         pygame.display.update()
 
     def tick(self):
